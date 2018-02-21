@@ -20,6 +20,7 @@
 
 stages = [
     '00init',
+    '01style',
 ]
 
 stage_dir = './jenkins/'
