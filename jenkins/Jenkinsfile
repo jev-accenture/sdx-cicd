@@ -1,0 +1,125 @@
+#!/usr/bin/env groovy
+/**
+ * References:
+ *   Groovy:
+ *     - http://groovy-lang.org/syntax.html
+ *     - http://docs.groovy-lang.org/latest/html/gapi/groovy/
+ *     - http://docs.groovy-lang.org/latest/html/gapi/org/codehaus/groovy/runtime/DefaultGroovyMethods.html
+ *   Java:
+ *     - https://docs.oracle.com/javase/8/docs/api/allclasses-noframe.html
+ *   DSL:
+ *     - Scripted Pipelime:  https://jenkins.io/doc/book/pipeline/syntax/#scripted-pipeline
+ *     - Pipeline Steps:  https://jenkins.io/doc/pipeline/steps/
+ *   Jenkins Annotated block/stage:
+ *     - https://issues.jenkins-ci.org/browse/JENKINS-26522
+ * Examples:
+ *   Pipeline:
+ *     - https://jenkins.io/doc/pipeline/examples/
+ *     - https://github.com/jenkinsci/pipeline-examples
+ */
+
+stages = [
+    '00init',
+]
+
+stage_dir = './jenkins/'
+
+properties([
+    parameters([
+        string(
+            name: 'STAGES',
+            defaultValue: stages.join(", "),
+            description: 'list of stages to be executed'
+        ),
+        string(
+            name: 'CREDENTIALSID',
+            defaultValue: 'git',
+            description: 'credential ID from Jenkins for GIT'
+        ),
+        string(
+            name: 'APPREPO',
+            defaultValue: 'git@github.com:jev-accenture/sdx-restapi.git',
+            description: 'path to the application source code (GIT)'
+        ),
+        string(
+            name: 'APPBRANCH',
+            defaultValue: 'master',
+            description: 'branch for the application source code (GIT)'
+        ),
+        string(
+            name: 'APPSRCDIR',
+            defaultValue: 'sdx-restapi',
+            description: 'directory name for the GIT clone'
+        ),
+    ])
+])
+
+node {
+    withEnv(["PATH+LOCALBIN=${JENKINS_HOME}/.local/bin"]) {
+
+        // dump input parameters
+        echo """
+            Job parameter STAGES:          ${params.STAGES}
+        """.stripIndent()
+
+        selected_stages = []
+        for (stage in params.STAGES.split(",")) {
+            stage = stage.trim()
+            if (stages.contains(stage)) {
+                selected_stages.add(stage)
+            }
+        }
+
+        echo """
+            STAGES to be executed:         ${selected_stages}
+        """.stripIndent()
+
+        echo """
+            Current PATH:         ${PATH}
+        """.stripIndent()
+
+
+        // pull from the git
+        checkout scm
+
+        try {
+            for (stage_name in stages) {
+                stage("${stage_name}") {
+                    if (selected_stages.contains(stage_name)) {
+                        def errors = load "${stage_dir}/${stage_name}/stage.groovy"
+
+                        if (errors == 0) {
+                            echo "Stage \'${stage_name}\' successfully completed"
+                        } else {
+                            currentBuild.result = 'FAILURE'
+                            echo "ERROR: Build failed on stage \'${stage_name}\' with ${errors} errors"
+                            sh 'exit 1'
+                        }
+                    } else {
+                        echo "Stage \'${stage_name}\' skipped"
+                    }
+                }
+            }
+        } finally {
+            try {
+                junit '**/junit.xml'
+                step([
+                  $class: 'CoberturaPublisher',
+                  autoUpdateHealth: false,
+                  autoUpdateStability: false,
+                  coberturaReportFile: '**/coverage.xml',
+                  failUnhealthy: false,
+                  failUnstable: false,
+                  maxNumberOfBuilds: 0,
+                  onlyStable: false,
+                  sourceEncoding: 'ASCII',
+                  zoomCoverageChart: false
+                ])
+            } catch (e) {
+                echo "ERROR: Can't operate junit xml results'"
+                echo e.toString()
+            }
+        }
+    }
+}
+
