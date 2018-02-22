@@ -22,6 +22,7 @@ stages = [
     '00init',
     '01style',
     '02test',
+    '03build',
 ]
 
 stage_dir = './jenkins/'
@@ -52,6 +53,11 @@ properties([
             name: 'APPSRCDIR',
             defaultValue: 'sdx-restapi',
             description: 'directory name for the GIT clone'
+        ),
+        string(
+            name: 'APPBUILDJOB',
+            defaultValue: 'sdx-restapi-build',
+            description: 'Dedicated job for building application'
         ),
     ])
 ])
